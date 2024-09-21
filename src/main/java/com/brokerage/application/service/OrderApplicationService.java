@@ -9,8 +9,11 @@ import com.brokerage.domain.repository.OrderRepository;
 import com.brokerage.domain.valueobject.Money;
 import com.brokerage.domain.valueobject.OrderSide;
 import com.brokerage.domain.valueobject.OrderStatus;
+import java.time.LocalDateTime;
+import java.util.List;
 import org.springframework.stereotype.Service;
 
+import static java.util.Objects.isNull;
 
 @Service
 public class OrderApplicationService {
@@ -65,7 +68,8 @@ public class OrderApplicationService {
 
     if (OrderSide.BUY.equals(order.getOrderSide())) {
       Asset asset = assetRepository.findByCustomerAndAssetName(customer, order.getAssetName())
-                                   .orElse(new Asset(customer, order.getAssetName(), 0, 0)); // Create a new asset if not found
+                                   .orElse(new Asset(customer, order.getAssetName(), 0,
+                                                     0)); // Create a new asset if not found
       asset.reserveShares(order.getSize());
       assetRepository.save(asset);
     }
@@ -108,5 +112,18 @@ public class OrderApplicationService {
     // Save the updated order and customer
     orderRepository.save(order);
     customerRepository.save(customer);
+  }
+
+  // Method to list orders with optional filters
+  public List<Order> listOrders(Long customerId, LocalDateTime startDate, LocalDateTime endDate, OrderStatus status) {
+    // Validate if the customer exists
+    Customer customer = customerRepository.findById(customerId)
+                                          .orElseThrow(() -> new IllegalArgumentException("Customer not found"));
+
+    // Fetch orders based on filters
+    if (isNull(status)) {
+      return orderRepository.findByCustomerIdAndCreateDateBetween(customerId, startDate, endDate);
+    }
+    return orderRepository.findByCustomerIdAndCreateDateBetweenAndStatus(customerId, startDate, endDate, status);
   }
 }

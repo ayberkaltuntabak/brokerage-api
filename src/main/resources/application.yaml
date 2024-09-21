@@ -1,0 +1,44 @@
+# ===============================
+# Server Configuration
+# ===============================
+server:
+  port: ${server.port}
+
+# ===============================
+# JWT Configuration
+# ===============================
+jwt:
+  secret: ${jwt.secret}
+  expirationMs: ${jwt.expirationMs}
+
+# ===============================
+# Spring Data JPA (Database) Configuration
+# ===============================
+spring:
+  datasource:
+    url: ${spring.datasource.url}
+    driver-class-name: ${spring.datasource.driverClassName}
+    username: ${spring.datasource.username}
+    password: ${spring.datasource.password}
+  jpa:
+    database-platform: ${spring.jpa.database-platform}
+    hibernate:
+      ddl-auto: ${spring.jpa.hibernate.ddl-auto}
+    show-sql: ${spring.jpa.show-sql}
+    properties:
+      hibernate:
+        format_sql: ${spring.jpa.properties.hibernate.format_sql}
+
+# ===============================
+# Logging Configuration
+# ===============================
+logging:
+  level:
+    org:
+      hibernate:
+        SQL: ${logging.level.org.hibernate.SQL}
+        type: ${logging.level.org.hibernate.type}
+
+# ===============================
+# Profile-Specific Configuration for 'test'
+# ===============================
