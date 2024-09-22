@@ -3,7 +3,6 @@ package com.brokerage.domain.aggregate;
 import com.brokerage.domain.entity.User;
 import com.brokerage.domain.valueobject.Money;
 import jakarta.persistence.CascadeType;
-import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -39,24 +38,10 @@ public class Customer {
   @Setter
   private User user;  // Link to User entity
 
-  @Setter
-  @Embedded
-  private Money balance; // Value Object to represent TRY balance
-
   @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<Asset> assets = new ArrayList<>();
 
   @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<Order> orders = new ArrayList<>();
 
-  public void deposit(Money amount) {
-    this.balance = this.balance.add(amount);
-  }
-
-  public void withdraw(Money amount) {
-    if (this.balance.getAmount().compareTo(amount.getAmount()) < 0) {
-      throw new IllegalArgumentException("Insufficient balance");
-    }
-    this.balance = this.balance.subtract(amount);
-  }
 }

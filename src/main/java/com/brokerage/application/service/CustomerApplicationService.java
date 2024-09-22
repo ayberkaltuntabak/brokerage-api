@@ -1,16 +1,16 @@
 package com.brokerage.application.service;
 
+import com.brokerage.domain.aggregate.Asset;
 import com.brokerage.domain.aggregate.Customer;
 import com.brokerage.domain.entity.User;
+import com.brokerage.domain.repository.AssetRepository;
 import com.brokerage.domain.repository.CustomerRepository;
 import com.brokerage.domain.repository.UserRepository;
 import com.brokerage.domain.valueobject.Money;
 import com.brokerage.infrastructure.security.JwtTokenProvider;
-import java.math.BigDecimal;
+import java.util.Optional;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
-
-import java.util.Optional;
 
 @Service
 public class CustomerApplicationService {
@@ -21,39 +21,64 @@ public class CustomerApplicationService {
 
   private final JwtTokenProvider jwtTokenProvider;
 
+  private final AssetApplicationService assetApplicationService;
+
   private final String CUSTOMER_ROLE = "ROLE_CUSTOMER";
 
+  private AssetRepository assetRepository;
+
   public CustomerApplicationService(CustomerRepository customerRepository, UserRepository userRepository,
-                                    JwtTokenProvider jwtTokenProvider) {
+                                    JwtTokenProvider jwtTokenProvider,
+                                    AssetApplicationService assetApplicationService, AssetRepository assetRepository) {
     this.customerRepository = customerRepository;
     this.userRepository = userRepository;
     this.jwtTokenProvider = jwtTokenProvider;
+    this.assetApplicationService = assetApplicationService;
+    this.assetRepository = assetRepository;
   }
 
   /**
    * Create a new customer for a given user.
    */
-  public Customer createCustomer(Long userId, String customerName, BigDecimal initialBalance) {
+  public Customer createCustomer(Long userId, String customerName, Integer initialBalance) {
     User user = userRepository.findById(userId)
                               .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
     Customer customer = new Customer();
     customer.setName(customerName);
-    customer.setBalance(new Money(initialBalance));
     customer.setUser(user); // Associate customer with user
-
-    return customerRepository.save(customer);
+    customerRepository.save(customer);
+    assetApplicationService.createAsset(customer.getId(), "TRY", initialBalance, initialBalance);
+    return customer;
   }
 
   /**
    * Deposits money into the customer's account.
    */
   public void deposit(Long customerId, Money amount, String token) {
-
     Customer customer = customerRepository.findById(customerId)
                                           .orElseThrow(() -> new IllegalArgumentException("Customer not found"));
-    customer.deposit(amount);
-    customerRepository.save(customer);
+
+    // Check if the user is authorized to perform the operation
+    isCustomerAuthorizedForOperation(token, customer);
+
+    Asset customerTryAsset = customer.getAssets()
+                                     .stream()
+                                     .filter(asset -> asset.getAssetName().equals("TRY"))
+                                     .findFirst()
+                                     .orElseThrow(() -> new IllegalArgumentException("No TRY Asset found for the customer"));
+
+    int moneyAmountToBeDeposited = amount.getAmount().intValue();
+    int currentSize = customerTryAsset.getSize();
+    int currentUsableSize = customerTryAsset.getUsableSize();
+
+    // Update the asset size and usable size
+    int newSize = currentSize + moneyAmountToBeDeposited;
+    customerTryAsset.setSize(newSize);
+    customerTryAsset.setUsableSize(currentUsableSize + moneyAmountToBeDeposited);
+
+    // Save the updated asset details
+    assetRepository.save(customerTryAsset);
   }
 
   private void isCustomerAuthorizedForOperation(String token, Customer customer) {
@@ -76,14 +101,25 @@ public class CustomerApplicationService {
   public void withdraw(Long customerId, Money amount, String token) {
     Customer customer = customerRepository.findById(customerId)
                                           .orElseThrow(() -> new IllegalArgumentException("Customer not found"));
-    isCustomerAuthorizedForOperation(token, customer);
-
-    if (customer.getBalance().isLessThan(amount)) {
-      throw new IllegalArgumentException("Insufficient funds");
+    Asset customerTryAsset =
+        customer.getAssets()
+                .stream()
+                .filter(asset -> asset.getAssetName().equals("TRY"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("No TRY Assests"));
+    int moneyAmountToBeTaken = amount.getAmount().intValue();
+    int tryAssetSize = customerTryAsset.getUsableSize();
+    if (moneyAmountToBeTaken >= tryAssetSize) {
+      throw new IllegalArgumentException("You cant withdraw more than your usable size you have");
     }
-
-    customer.withdraw(amount);
-    customerRepository.save(customer);
+    int newSize = tryAssetSize - moneyAmountToBeTaken;
+    customerTryAsset.setSize(newSize);
+    int tryUsableSize = customerTryAsset.getUsableSize();
+    if (newSize <= tryUsableSize) {
+      customerTryAsset.setUsableSize(newSize);
+    }
+    assetRepository.save(customerTryAsset);
+    isCustomerAuthorizedForOperation(token, customer);
   }
 
   /**

@@ -7,7 +7,6 @@ import com.brokerage.infrastructure.security.JwtTokenProvider;
 import com.brokerage.presentation.dto.ApiResponse;
 import com.brokerage.presentation.dto.LoginResponseDTO;
 import com.brokerage.presentation.dto.SignUpResponseDTO;
-import java.math.BigDecimal;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -55,7 +54,7 @@ public class AuthController {
   @PostMapping("/signup/customer")
   public ResponseEntity<ApiResponse<SignUpResponseDTO>> registerCustomer(@RequestParam String username,
                                                                          @RequestParam String password,
-                                                                         @RequestParam BigDecimal initialBalance,
+                                                                         @RequestParam Integer initialBalance,
                                                                          @RequestParam String name) {
     if (userRepository.findByUsername(username).isPresent()) {
       return ResponseEntity.badRequest().body(ApiResponse.failure("Username is already taken."));

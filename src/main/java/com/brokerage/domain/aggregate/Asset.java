@@ -45,4 +45,12 @@ public class Asset {
   public void releaseShares(int shares) {
     this.usableSize += shares;
   }
+
+  public void setSize(int newSize) {
+    this.size = newSize;
+  }
+
+  public void setUsableSize(int newSize) {
+    this.usableSize = newSize;
+  }
 }

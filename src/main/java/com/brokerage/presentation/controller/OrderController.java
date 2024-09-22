@@ -43,7 +43,6 @@ public class OrderController {
         command.getAssetName(),
         OrderSide.valueOf(command.getOrderSide()),
         command.getSize(),
-        command.getUsableSize(),
         new Money(command.getPrice())
                                           );
     OrderResponseDTO responseDTO = mapToOrderResponseDTO(order);
@@ -53,9 +52,9 @@ public class OrderController {
   /**
    * Match an existing pending order
    */
-  @PostMapping("/match/{orderId}")
-  public ResponseEntity<ApiResponse<Void>> matchOrder(@PathVariable Long orderId) {
-    orderService.matchOrder(orderId);
+  @PostMapping("/match/{customerId}")
+  public ResponseEntity<ApiResponse<Void>> matchOrder(@PathVariable Long customerId) {
+    orderService.matchOrders(customerId);
     return ResponseEntity.ok(ApiResponse.success("Order matched successfully", null));
   }
 

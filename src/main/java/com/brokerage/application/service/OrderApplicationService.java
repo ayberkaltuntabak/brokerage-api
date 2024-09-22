@@ -10,6 +10,7 @@ import com.brokerage.domain.valueobject.Money;
 import com.brokerage.domain.valueobject.OrderSide;
 import com.brokerage.domain.valueobject.OrderStatus;
 import jakarta.transaction.Transactional;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -23,77 +24,96 @@ public class OrderApplicationService {
 
   private final CustomerRepository customerRepository;
 
+  private final AssetApplicationService assetApplicationService;
+
   private final AssetRepository assetRepository;
 
   public OrderApplicationService(OrderRepository orderRepository,
                                  CustomerRepository customerRepository,
-                                 AssetRepository assetRepository) {
+                                 AssetApplicationService assetApplicationService, AssetRepository assetRepository) {
     this.orderRepository = orderRepository;
     this.customerRepository = customerRepository;
+    this.assetApplicationService = assetApplicationService;
     this.assetRepository = assetRepository;
   }
-
 
   /**
    * Creates a new stock order for a customer
    */
   @Transactional
-  public Order createOrder(Long customerId, String assetName, OrderSide side, int size, int usableSize, Money price) {
+  public Order createOrder(Long customerId, String assetName, OrderSide side, int size, Money price) {
     Customer customer = customerRepository.findById(customerId)
                                           .orElseThrow(() -> new IllegalArgumentException("Customer not found"));
 
     // Calculate total cost
     Money totalCost = price.multiply(size);
 
-    if (OrderSide.BUY.equals(side) && customer.getBalance().isLessThan(totalCost)) {
+    // Retrieve the customer's TRY asset
+    Asset customerTryAsset = customer.getAssets().stream()
+                                     .filter(asset -> asset.getAssetName().equals("TRY"))
+                                     .findFirst()
+                                     .orElseThrow(() -> new IllegalArgumentException("No TRY Asset found"));
+
+    Money customerAccountBalance = new Money(BigDecimal.valueOf(customerTryAsset.getUsableSize()));
+
+    // Validate balance for BUY order
+    if (OrderSide.BUY.equals(side) && customerAccountBalance.isLessThan(totalCost)) {
       throw new IllegalArgumentException("Insufficient balance for BUY order");
     }
 
-    Asset asset = assetRepository.findByCustomerAndAssetName(customer, assetName).orElse(null);
-    if(asset == null){
-      asset = new Asset(customer, assetName, size, usableSize);
-    }
+    // Update the TRY asset based on the order side
     if (OrderSide.BUY.equals(side)) {
-      assetRepository.save(asset);
-      asset.reserveShares(size);
-    }
-    if (OrderSide.SELL.equals(side)) {
-      asset.releaseShares(size);
-      assetRepository.save(asset);
+      customerTryAsset.reserveShares(totalCost.getAmount().intValue());
+    } else {
+      customerTryAsset.releaseShares(totalCost.getAmount().intValue());
     }
 
-    // Create and save the order
+    // Find or create the asset for the given asset name
+    Asset assetByCustomerAndAssetName = assetApplicationService.findAssetByCustomerAndAssetName(customerId, assetName);
+    if (OrderSide.BUY.equals(side)) {
+      if (assetByCustomerAndAssetName != null) {
+        assetByCustomerAndAssetName.releaseShares(size);
+      } else {
+        assetByCustomerAndAssetName = new Asset(customer, assetName, size, size);
+      }
+    } else if (OrderSide.SELL.equals(side)) {
+      if (assetByCustomerAndAssetName == null) {
+        throw new IllegalArgumentException("You can't sell an asset that you don't have");
+      }
+      assetByCustomerAndAssetName.reserveShares(size);
+    }
+
+    // Save the updated assets
+    assetRepository.save(customerTryAsset);
+    assetRepository.save(assetByCustomerAndAssetName);
+
+    // Create and save the new order
     Order order = new Order(customer, assetName, side, size, price, OrderStatus.PENDING);
-    orderRepository.save(order);
-
-    return order;
+    return orderRepository.save(order);
   }
 
-  /**
-   * Matches a pending order and updates customer balances and assets accordingly
-   */
+
   @Transactional
-  public void matchOrder(Long orderId) {
-    Order order = orderRepository.findById(orderId)
-                                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
+  public void matchOrders(Long customerId) {
+    Customer customer = customerRepository.findById(customerId)
+                                          .orElseThrow(() -> new IllegalArgumentException("Customer not found"));
 
-    Customer customer = order.getCustomer();
-    Asset asset = assetRepository.findByCustomerAndAssetName(customer, order.getAssetName())
-                                 .orElse(null); // Create a new asset if not found
+    // Retrieve all pending orders for the customer
+    List<Order> pendingOrders = orderRepository.findByCustomerIdAndStatus(customerId, OrderStatus.PENDING);
 
-    if (OrderSide.BUY.equals(order.getOrderSide())) {
-      customer.withdraw(order.getPrice().multiply(order.getSize()));
-      assetRepository.save(asset);
+    for (Order order : pendingOrders) {
+      // Find the relevant asset for the order
+      Asset customerAsset = assetApplicationService.findAssetByCustomerAndAssetName(customerId, order.getAssetName());
+      customerAsset.setSize(customerAsset.getUsableSize());
+      // Mark the order as matched
+      order.match();
+      // Save the updated asset and order
+      assetRepository.save(customerAsset);
+      orderRepository.save(order);
     }
-
-    if (OrderSide.SELL.equals(order.getOrderSide())) {
-      Money totalSaleValue = order.getPrice().multiply(order.getSize());
-      customer.deposit(totalSaleValue);
-      customerRepository.save(customer);
-    }
-    order.match();
-    orderRepository.save(order);
   }
+
+
 
   /**
    * Cancels a pending order and restores any reserved funds or assets
@@ -102,19 +122,21 @@ public class OrderApplicationService {
   public void cancelOrder(Long orderId) {
     Order order = orderRepository.findById(orderId)
                                  .orElseThrow(() -> new IllegalArgumentException("Order not found"));
-    Customer customer = order.getCustomer();
-    Asset asset = assetRepository.findByCustomerAndAssetName(customer, order.getAssetName())
-                                 .orElseThrow(() -> new IllegalArgumentException("Asset not found"));
-    order.cancel();
-    if (OrderSide.BUY.equals(order.getOrderSide())) {
-      asset.releaseShares(order.getSize());
-    }
+    Money totalCostOfOrder = order.getPrice().multiply(order.getSize());
+    Asset customerTryAsset = order.getCustomer().getAssets()
+                                  .stream()
+                                  .filter(asset -> asset.getAssetName().equals("TRY"))
+                                  .findFirst()
+                                  .orElseThrow(() -> new IllegalArgumentException("No TRY Assests"));
     if (OrderSide.SELL.equals(order.getOrderSide())) {
-      asset.reserveShares(order.getSize());
+      customerTryAsset.reserveShares(totalCostOfOrder.getAmount().intValue());
     }
-    assetRepository.save(asset); // Save the updated asset
+    if (OrderSide.BUY.equals(order.getOrderSide())) {
+      customerTryAsset.releaseShares(totalCostOfOrder.getAmount().intValue());
+    }
+    order.cancel();
+    assetRepository.save(customerTryAsset); // Save the updated asset
     orderRepository.save(order);
-    customerRepository.save(customer);
   }
 
   // Method to list orders with optional filters

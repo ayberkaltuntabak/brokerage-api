@@ -21,4 +21,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
   // Optional: Add other filters like order status
   List<Order> findByCustomerIdAndCreateDateBetweenAndStatus(Long customerId, LocalDateTime startDate, LocalDateTime endDate, OrderStatus status);
 
+  List<Order> findByCustomerIdAndStatus(Long customerId, OrderStatus orderStatus);
+
 }
