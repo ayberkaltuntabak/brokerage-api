@@ -9,6 +9,7 @@ import com.brokerage.domain.repository.OrderRepository;
 import com.brokerage.domain.valueobject.Money;
 import com.brokerage.domain.valueobject.OrderSide;
 import com.brokerage.domain.valueobject.OrderStatus;
+import jakarta.transaction.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -32,10 +33,12 @@ public class OrderApplicationService {
     this.assetRepository = assetRepository;
   }
 
+
   /**
    * Creates a new stock order for a customer
    */
-  public Order createOrder(Long customerId, String assetName, OrderSide side, int size, Money price) {
+  @Transactional
+  public Order createOrder(Long customerId, String assetName, OrderSide side, int size, int usableSize, Money price) {
     Customer customer = customerRepository.findById(customerId)
                                           .orElseThrow(() -> new IllegalArgumentException("Customer not found"));
 
@@ -46,13 +49,22 @@ public class OrderApplicationService {
       throw new IllegalArgumentException("Insufficient balance for BUY order");
     }
 
+    Asset asset = assetRepository.findByCustomerAndAssetName(customer, assetName).orElse(null);
+    if(asset == null){
+      asset = new Asset(customer, assetName, size, usableSize);
+    }
+    if (OrderSide.BUY.equals(side)) {
+      assetRepository.save(asset);
+      asset.reserveShares(size);
+    }
+    if (OrderSide.SELL.equals(side)) {
+      asset.releaseShares(size);
+      assetRepository.save(asset);
+    }
+
+    // Create and save the order
     Order order = new Order(customer, assetName, side, size, price, OrderStatus.PENDING);
     orderRepository.save(order);
-
-    if (side == OrderSide.BUY) {
-      customer.withdraw(totalCost);
-      customerRepository.save(customer);
-    }
 
     return order;
   }
@@ -60,17 +72,17 @@ public class OrderApplicationService {
   /**
    * Matches a pending order and updates customer balances and assets accordingly
    */
+  @Transactional
   public void matchOrder(Long orderId) {
     Order order = orderRepository.findById(orderId)
                                  .orElseThrow(() -> new IllegalArgumentException("Order not found"));
 
     Customer customer = order.getCustomer();
+    Asset asset = assetRepository.findByCustomerAndAssetName(customer, order.getAssetName())
+                                 .orElse(null); // Create a new asset if not found
 
     if (OrderSide.BUY.equals(order.getOrderSide())) {
-      Asset asset = assetRepository.findByCustomerAndAssetName(customer, order.getAssetName())
-                                   .orElse(new Asset(customer, order.getAssetName(), 0,
-                                                     0)); // Create a new asset if not found
-      asset.reserveShares(order.getSize());
+      customer.withdraw(order.getPrice().multiply(order.getSize()));
       assetRepository.save(asset);
     }
 
@@ -79,7 +91,6 @@ public class OrderApplicationService {
       customer.deposit(totalSaleValue);
       customerRepository.save(customer);
     }
-
     order.match();
     orderRepository.save(order);
   }
@@ -87,29 +98,21 @@ public class OrderApplicationService {
   /**
    * Cancels a pending order and restores any reserved funds or assets
    */
+  @Transactional
   public void cancelOrder(Long orderId) {
     Order order = orderRepository.findById(orderId)
                                  .orElseThrow(() -> new IllegalArgumentException("Order not found"));
-
     Customer customer = order.getCustomer();
-
-    if (OrderSide.BUY.equals(order.getOrderSide())) {
-      Money totalCost = order.getPrice().multiply(order.getSize());
-      customer.deposit(totalCost); // Refund the money to the customer
-    }
-
-    if (OrderSide.SELL.equals(order.getOrderSide())) {
-      Asset asset = assetRepository.findByCustomerAndAssetName(customer, order.getAssetName())
-                                   .orElseThrow(() -> new IllegalArgumentException("Asset not found"));
-
-      asset.releaseShares(order.getSize());
-      assetRepository.save(asset); // Save the updated asset
-    }
-
-    // Mark the order as canceled
+    Asset asset = assetRepository.findByCustomerAndAssetName(customer, order.getAssetName())
+                                 .orElseThrow(() -> new IllegalArgumentException("Asset not found"));
     order.cancel();
-
-    // Save the updated order and customer
+    if (OrderSide.BUY.equals(order.getOrderSide())) {
+      asset.releaseShares(order.getSize());
+    }
+    if (OrderSide.SELL.equals(order.getOrderSide())) {
+      asset.reserveShares(order.getSize());
+    }
+    assetRepository.save(asset); // Save the updated asset
     orderRepository.save(order);
     customerRepository.save(customer);
   }

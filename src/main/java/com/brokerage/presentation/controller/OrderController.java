@@ -43,6 +43,7 @@ public class OrderController {
         command.getAssetName(),
         OrderSide.valueOf(command.getOrderSide()),
         command.getSize(),
+        command.getUsableSize(),
         new Money(command.getPrice())
                                           );
     OrderResponseDTO responseDTO = mapToOrderResponseDTO(order);

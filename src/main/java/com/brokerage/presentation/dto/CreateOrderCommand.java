@@ -14,4 +14,5 @@ public class CreateOrderCommand {
   private String orderSide; // BUY or SELL
   private int size;
   private BigDecimal price;
+  private int usableSize;
 }

@@ -19,21 +19,25 @@ public class JwtTokenProvider {
   @Value("${jwt.expirationMs}")
   private int jwtExpirationMs;
 
+  // Generate a JWT token with user details and roles
   public String generateToken(Authentication authentication) {
     UserDetails userPrincipal = (UserDetails) authentication.getPrincipal();
+
     return Jwts.builder()
                .setSubject(userPrincipal.getUsername())
+               .claim("roles", userPrincipal.getAuthorities()) // Store roles as a claim
                .setIssuedAt(new Date())
                .setExpiration(new Date(new Date().getTime() + jwtExpirationMs))
                .signWith(SignatureAlgorithm.HS512, jwtSecret)
                .compact();
   }
 
+  // Extract the username from the JWT token
   public String getUsernameFromJwtToken(String token) {
-    Claims claims = Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(token).getBody();
-    return claims.getSubject();
+    return Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(token).getBody().getSubject();
   }
 
+  // Validate the JWT token
   public boolean validateToken(String token) {
     try {
       Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(token);
@@ -42,6 +46,12 @@ public class JwtTokenProvider {
       return false;
     }
   }
+
+  // Extract the roles from the JWT token
+  public Claims getAllClaimsFromToken(String token) {
+    return Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(token).getBody();
+  }
+
   public String getTokenFromHeader(String authorizationHeader) {
     if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
       return authorizationHeader.substring(7); // Extract the JWT token part

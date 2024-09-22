@@ -6,19 +6,20 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 public class SecurityConfig {
 
-  private final JwtTokenProvider jwtTokenProvider;
-
+  private final JwtAuthenticationFilter jwtAuthenticationFilter;
   private final CustomUserDetailsService customUserDetailsService;
 
-  public SecurityConfig(JwtTokenProvider jwtTokenProvider, CustomUserDetailsService customUserDetailsService) {
-    this.jwtTokenProvider = jwtTokenProvider;
+  public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, CustomUserDetailsService customUserDetailsService) {
+    this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     this.customUserDetailsService = customUserDetailsService;
   }
 
@@ -31,14 +32,14 @@ public class SecurityConfig {
                                                     "/v3/api-docs/**",
                                                     "/h2-console/**",
                                                     "/api/login",
-                                                    "/api/signup/**",
-                                                    "/api/customers/**").permitAll()
-                                   .requestMatchers("/api/assets/**").hasRole("ADMIN")
-                                   .requestMatchers("/api/orders/**").hasRole("ADMIN")
+                                                    "/api/signup/**").permitAll()
+                                   .requestMatchers("/api/assets/**").hasAuthority("ROLE_ADMIN")
+                                   .requestMatchers("/api/orders/**").hasAuthority("ROLE_ADMIN")
                                    .anyRequest().authenticated()
                               )
+        .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
         .headers().frameOptions().disable();
-
     return http.build();
   }
 

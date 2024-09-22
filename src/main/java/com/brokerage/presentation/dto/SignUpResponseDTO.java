@@ -10,8 +10,8 @@ public class SignUpResponseDTO {
   private final String token;
   private final Long customerId;
 
-  public SignUpResponseDTO(String token, Long customerId) {
+  public SignUpResponseDTO(String token, Long userId) {
     this.token = token;
-    this.customerId = customerId;
+    this.customerId = userId;
   }
 }

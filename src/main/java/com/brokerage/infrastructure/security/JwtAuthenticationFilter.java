@@ -5,7 +5,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -18,7 +17,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
   private final JwtTokenProvider jwtTokenProvider;
-
   private final UserDetailsService userDetailsService;
 
   public JwtAuthenticationFilter(JwtTokenProvider jwtTokenProvider, UserDetailsService userDetailsService) {
@@ -27,11 +25,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   }
 
   @Override
-  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-    String token = getJwtFromRequest(request);
+  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+      throws ServletException, IOException {
 
-    if (token != null && jwtTokenProvider.validateToken(token)) {
-      String username = jwtTokenProvider.getUsernameFromJwtToken(token);
+    String jwt = getJwtFromRequest(request);
+
+    if (jwt != null && jwtTokenProvider.validateToken(jwt)) {
+      String username = jwtTokenProvider.getUsernameFromJwtToken(jwt);
       UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
       if (userDetails != null) {
@@ -39,6 +39,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             userDetails, null, userDetails.getAuthorities());
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
+        // Set the authentication in the security context
         SecurityContextHolder.getContext().setAuthentication(authentication);
       }
     }
